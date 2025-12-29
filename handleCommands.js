@@ -1,16 +1,12 @@
-import ping from './comandos/ping.js'
-
-export default async function handleCommands(sock, msg) {
-  const from = msg.key.remoteJid
+module.exports = async (sock, msg) => {
+  const from = msg.key.remoteJid;
   const text =
     msg.message.conversation ||
-    msg.message.extendedTextMessage?.text
+    msg.message.extendedTextMessage?.text;
 
-  if (!text) return
+  if (!text) return;
 
-  const comando = text.toLowerCase().trim()
-
-  if (comando === 'ping') {
-    await ping(sock, from)
+  if (text.toLowerCase() === "ping") {
+    await sock.sendMessage(from, { text: "🏓 Pong!" });
   }
-}
+};
