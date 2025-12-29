@@ -1,5 +1,3 @@
-export default async function ping(sock, from) {
-  await sock.sendMessage(from, {
-    text: '🏓 Pong!'
-  })
-}
+module.exports = async (sock, from) => {
+  await sock.sendMessage(from, { text: "🏓 Pong!" });
+};
