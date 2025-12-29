@@ -1,49 +1,81 @@
-import makeWASocket, {
+const path = require("path");
+const readline = require("readline");
+const P = require("pino");
+
+const {
+  default: makeWASocket,
   DisconnectReason,
   useMultiFileAuthState,
   fetchLatestBaileysVersion
-} from '@whiskeysockets/baileys'
+} = require("@whiskeysockets/baileys");
 
-import P from 'pino'
-import handleCommands from './handleCommands.js'
+const handleCommands = require("./handleCommands");
 
-async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth')
-  const { version } = await fetchLatestBaileysVersion()
+const question = (text) => {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  return new Promise(resolve => {
+    rl.question(text, answer => {
+      rl.close();
+      resolve(answer);
+    });
+  });
+};
+
+async function connect() {
+  const { state, saveCreds } = await useMultiFileAuthState(
+    path.resolve(__dirname, "auth")
+  );
+
+  const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
-    logger: P({ level: 'silent' }),
     auth: state,
-    printQRInTerminal: false // NÃO usar QR
-  })
+    logger: P({ level: "silent" }),
+    printQRInTerminal: false
+  });
 
-  // 👉 GERA O CÓDIGO DE 6 DÍGITOS
+  sock.ev.on("creds.update", saveCreds);
+
+  // 🔥 PAREAMENTO CORRETO
   if (!sock.authState.creds.registered) {
-    const numero = '55DDDNUMERO' // Ex: 5511999999999
-    const code = await sock.requestPairingCode(numero)
-    console.log('📲 Código de pareamento:', code)
+    let number = await question("Informe seu número (ex: 5511999999999): ");
+    number = number.replace(/\D/g, "");
+
+    if (!number) {
+      console.log("Número inválido.");
+      process.exit(1);
+    }
+
+    const code = await sock.requestPairingCode(number);
+    console.log("📲 Código de pareamento:", code);
   }
 
-  sock.ev.on('creds.update', saveCreds)
-
-  sock.ev.on('connection.update', ({ connection, lastDisconnect }) => {
-    if (connection === 'close') {
-      const reason = lastDisconnect?.error?.output?.statusCode
-      if (reason !== DisconnectReason.loggedOut) {
-        startBot()
-      }
-    } else if (connection === 'open') {
-      console.log('✅ Bot conectado com sucesso!')
+  sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
+    if (connection === "open") {
+      console.log("✅ BOT CONECTADO COM SUCESSO!");
     }
-  })
 
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages[0]
-    if (!msg.message || msg.key.fromMe) return
+    if (connection === "close") {
+      const shouldReconnect =
+        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
 
-    await handleCommands(sock, msg)
-  })
+      if (shouldReconnect) {
+        connect();
+      }
+    }
+  });
+
+  sock.ev.on("messages.upsert", async ({ messages }) => {
+    const msg = messages[0];
+    if (!msg.message || msg.key.fromMe) return;
+
+    handleCommands(sock, msg);
+  });
 }
 
-startBot()
+connect();
