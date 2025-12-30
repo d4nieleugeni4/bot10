@@ -1,32 +1,38 @@
 import config from "../config.js";
 
+function limparNumero(jid = "") {
+  return jid.split("@")[0].replace(/\D/g, "");
+}
+
 export default {
   nome: "ban",
 
   async executar(sock, msg) {
     const remoteJid = msg.key.remoteJid;
 
-    // ❌ Apenas grupos
+    // ❌ só grupo
     if (!remoteJid.endsWith("@g.us")) return;
 
     const metadata = await sock.groupMetadata(remoteJid);
     const participants = metadata.participants;
 
-    const sender = msg.key.participant;
+    const senderJid = msg.key.participant;
+    const senderNumber = limparNumero(senderJid);
+
+    const botJid = sock.user.id;
+    const botNumber = limparNumero(botJid);
 
     // =========================
-    // 👑 VERIFICAR SE USUÁRIO É ADMIN
+    // 👑 LISTA REAL DE ADMINS
     // =========================
-    const isAdmin = participants.some(p => {
-      const pNumber = p.id.replace(/\D/g, "");
-      const senderNumber = sender.replace(/\D/g, "");
-      return (
-        pNumber === senderNumber &&
-        (p.admin === "admin" || p.admin === "superadmin")
-      );
-    });
+    const admins = participants
+      .filter(p => p.admin === "admin" || p.admin === "superadmin")
+      .map(p => limparNumero(p.id));
 
-    if (!isAdmin) {
+    // =========================
+    // 👑 USUÁRIO É ADMIN?
+    // =========================
+    if (!admins.includes(senderNumber)) {
       await sock.sendMessage(remoteJid, {
         text: "❌ Apenas administradores podem usar este comando.",
         quoted: msg
@@ -35,19 +41,9 @@ export default {
     }
 
     // =========================
-    // 🤖 VERIFICAR SE O BOT É ADMIN (CORRETO)
+    // 🤖 BOT É ADMIN?
     // =========================
-    const botNumber = sock.user.id.split(":")[0].replace(/\D/g, "");
-
-    const botIsAdmin = participants.some(p => {
-      const pNumber = p.id.replace(/\D/g, "");
-      return (
-        pNumber === botNumber &&
-        (p.admin === "admin" || p.admin === "superadmin")
-      );
-    });
-
-    if (!botIsAdmin) {
+    if (!admins.includes(botNumber)) {
       await sock.sendMessage(remoteJid, {
         text: "❌ Eu preciso ser administrador para remover alguém.",
         quoted: msg
@@ -56,43 +52,41 @@ export default {
     }
 
     // =========================
-    // 👤 DEFINIR ALVO (MENÇÃO OU RESPOSTA)
+    // 👤 DEFINIR ALVO
     // =========================
-    let target = null;
+    let targetJid = null;
 
-    // Se respondeu uma mensagem
-    const quotedParticipant =
+    // resposta
+    const quoted =
       msg.message?.extendedTextMessage?.contextInfo?.participant;
 
-    if (quotedParticipant) {
-      target = quotedParticipant.includes("@")
-        ? quotedParticipant
-        : quotedParticipant + "@s.whatsapp.net";
+    if (quoted) {
+      targetJid = quoted.includes("@")
+        ? quoted
+        : quoted + "@s.whatsapp.net";
     }
 
-    // Se marcou alguém
+    // menção
     const mentioned =
       msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
 
-    if (!target && mentioned && mentioned.length > 0) {
-      target = mentioned[0];
+    if (!targetJid && mentioned?.length) {
+      targetJid = mentioned[0];
     }
 
-    if (!target) {
+    if (!targetJid) {
       await sock.sendMessage(remoteJid, {
-        text: "❌ Marque alguém ou responda uma mensagem para banir.",
+        text: "❌ Marque alguém ou responda uma mensagem.",
         quoted: msg
       });
       return;
     }
 
+    const targetNumber = limparNumero(targetJid);
+
     // =========================
     // 🚫 VALIDAÇÕES
     // =========================
-    const targetNumber = target.replace(/\D/g, "");
-    const senderNumber = sender.replace(/\D/g, "");
-
-    // Não pode se banir
     if (targetNumber === senderNumber) {
       await sock.sendMessage(remoteJid, {
         text: "❌ Você não pode se remover.",
@@ -101,7 +95,6 @@ export default {
       return;
     }
 
-    // Não pode banir o bot
     if (targetNumber === botNumber) {
       await sock.sendMessage(remoteJid, {
         text: "❌ Você não pode me remover.",
@@ -110,8 +103,7 @@ export default {
       return;
     }
 
-    // Não pode banir o dono
-    if (targetNumber === config.dono.numero.replace(/\D/g, "")) {
+    if (targetNumber === limparNumero(config.dono.numero)) {
       await sock.sendMessage(remoteJid, {
         text: "❌ Você não pode remover o dono do bot.",
         quoted: msg
@@ -120,16 +112,16 @@ export default {
     }
 
     // =========================
-    // 🚫 REMOVER MEMBRO
+    // 🚫 REMOVER
     // =========================
     await sock.groupParticipantsUpdate(
       remoteJid,
-      [target],
+      [targetJid],
       "remove"
     );
 
     // =========================
-    // ✅ REAÇÃO + CONFIRMAÇÃO
+    // ✅ CONFIRMAÇÃO
     // =========================
     await sock.sendMessage(remoteJid, {
       react: {
