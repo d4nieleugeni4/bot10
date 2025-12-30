@@ -6,7 +6,7 @@ export default {
   async executar(sock, msg) {
     const remoteJid = msg.key.remoteJid;
 
-    // ❌ Apenas grupo
+    // ❌ Apenas grupos
     if (!remoteJid.endsWith("@g.us")) return;
 
     const metadata = await sock.groupMetadata(remoteJid);
@@ -14,12 +14,17 @@ export default {
 
     const sender = msg.key.participant;
 
-    // 👑 Verificar se quem usou é admin
-    const isAdmin = participants.some(
-      p =>
-        p.id === sender &&
+    // =========================
+    // 👑 VERIFICAR SE USUÁRIO É ADMIN
+    // =========================
+    const isAdmin = participants.some(p => {
+      const pNumber = p.id.replace(/\D/g, "");
+      const senderNumber = sender.replace(/\D/g, "");
+      return (
+        pNumber === senderNumber &&
         (p.admin === "admin" || p.admin === "superadmin")
-    );
+      );
+    });
 
     if (!isAdmin) {
       await sock.sendMessage(remoteJid, {
@@ -29,13 +34,18 @@ export default {
       return;
     }
 
-    // 🤖 Verificar se o bot é admin
-    const botId = sock.user.id.split(":")[0] + "@s.whatsapp.net";
-    const botIsAdmin = participants.some(
-      p =>
-        p.id === botId &&
+    // =========================
+    // 🤖 VERIFICAR SE O BOT É ADMIN (CORRETO)
+    // =========================
+    const botNumber = sock.user.id.split(":")[0].replace(/\D/g, "");
+
+    const botIsAdmin = participants.some(p => {
+      const pNumber = p.id.replace(/\D/g, "");
+      return (
+        pNumber === botNumber &&
         (p.admin === "admin" || p.admin === "superadmin")
-    );
+      );
+    });
 
     if (!botIsAdmin) {
       await sock.sendMessage(remoteJid, {
@@ -45,19 +55,27 @@ export default {
       return;
     }
 
-    // 👤 Quem será removido
-    let target;
+    // =========================
+    // 👤 DEFINIR ALVO (MENÇÃO OU RESPOSTA)
+    // =========================
+    let target = null;
 
-    // 📌 Se respondeu uma mensagem
-    if (msg.message?.extendedTextMessage?.contextInfo?.participant) {
-      target =
-        msg.message.extendedTextMessage.contextInfo.participant +
-        "@s.whatsapp.net";
+    // Se respondeu uma mensagem
+    const quotedParticipant =
+      msg.message?.extendedTextMessage?.contextInfo?.participant;
+
+    if (quotedParticipant) {
+      target = quotedParticipant.includes("@")
+        ? quotedParticipant
+        : quotedParticipant + "@s.whatsapp.net";
     }
 
-    // 📌 Se marcou alguém
-    if (!target && msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length) {
-      target = msg.message.extendedTextMessage.contextInfo.mentionedJid[0];
+    // Se marcou alguém
+    const mentioned =
+      msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
+
+    if (!target && mentioned && mentioned.length > 0) {
+      target = mentioned[0];
     }
 
     if (!target) {
@@ -68,8 +86,14 @@ export default {
       return;
     }
 
-    // ❌ Não pode banir a si mesmo
-    if (target === sender) {
+    // =========================
+    // 🚫 VALIDAÇÕES
+    // =========================
+    const targetNumber = target.replace(/\D/g, "");
+    const senderNumber = sender.replace(/\D/g, "");
+
+    // Não pode se banir
+    if (targetNumber === senderNumber) {
       await sock.sendMessage(remoteJid, {
         text: "❌ Você não pode se remover.",
         quoted: msg
@@ -77,8 +101,8 @@ export default {
       return;
     }
 
-    // ❌ Não pode banir o bot
-    if (target === botId) {
+    // Não pode banir o bot
+    if (targetNumber === botNumber) {
       await sock.sendMessage(remoteJid, {
         text: "❌ Você não pode me remover.",
         quoted: msg
@@ -86,8 +110,8 @@ export default {
       return;
     }
 
-    // ❌ Não pode banir o dono
-    if (target.replace(/\D/g, "") === config.dono.numero) {
+    // Não pode banir o dono
+    if (targetNumber === config.dono.numero.replace(/\D/g, "")) {
       await sock.sendMessage(remoteJid, {
         text: "❌ Você não pode remover o dono do bot.",
         quoted: msg
@@ -95,14 +119,18 @@ export default {
       return;
     }
 
-    // 🚫 REMOVER
+    // =========================
+    // 🚫 REMOVER MEMBRO
+    // =========================
     await sock.groupParticipantsUpdate(
       remoteJid,
       [target],
       "remove"
     );
 
-    // ✅ Reação de sucesso
+    // =========================
+    // ✅ REAÇÃO + CONFIRMAÇÃO
+    // =========================
     await sock.sendMessage(remoteJid, {
       react: {
         text: "✅",
@@ -111,7 +139,8 @@ export default {
     });
 
     await sock.sendMessage(remoteJid, {
-      text: "✅ Membro removido com sucesso!"
+      text: "✅ Membro removido com sucesso!",
+      quoted: msg
     });
   }
 };
