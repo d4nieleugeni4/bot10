@@ -1,15 +1,14 @@
-const path = require("path");
-const readline = require("readline");
-const P = require("pino");
-
-const {
-  default: makeWASocket,
+import path from "path";
+import readline from "readline";
+import P from "pino";
+import {
+  default as makeWASocket,
   DisconnectReason,
   useMultiFileAuthState,
   fetchLatestBaileysVersion
-} = require("@whiskeysockets/baileys");
+} from "@whiskeysockets/baileys";
 
-const handleCommands = require("./handleCommands");
+import handleCommands from "./handleCommands.js";
 
 const question = (text) => {
   const rl = readline.createInterface({
@@ -27,7 +26,7 @@ const question = (text) => {
 
 async function connect() {
   const { state, saveCreds } = await useMultiFileAuthState(
-    path.resolve(__dirname, "auth")
+    path.resolve("./auth")
   );
 
   const { version } = await fetchLatestBaileysVersion();
@@ -41,13 +40,13 @@ async function connect() {
 
   sock.ev.on("creds.update", saveCreds);
 
-  // 🔥 PAREAMENTO CORRETO
+  // ✅ PEDIR NÚMERO + GERAR CÓDIGO (fluxo correto)
   if (!sock.authState.creds.registered) {
     let number = await question("Informe seu número (ex: 5511999999999): ");
     number = number.replace(/\D/g, "");
 
     if (!number) {
-      console.log("Número inválido.");
+      console.log("❌ Número inválido");
       process.exit(1);
     }
 
@@ -64,15 +63,13 @@ async function connect() {
       const shouldReconnect =
         lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
 
-      if (shouldReconnect) {
-        connect();
-      }
+      if (shouldReconnect) connect();
     }
   });
 
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
-    if (!msg.message || msg.key.fromMe) return;
+    if (!msg?.message || msg.key.fromMe) return;
 
     handleCommands(sock, msg);
   });
