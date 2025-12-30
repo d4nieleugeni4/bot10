@@ -1,4 +1,4 @@
-module.exports = async (sock, msg) => {
+export default async function handleCommands(sock, msg) {
   const from = msg.key.remoteJid;
   const text =
     msg.message.conversation ||
@@ -9,4 +9,4 @@ module.exports = async (sock, msg) => {
   if (text.toLowerCase() === "ping") {
     await sock.sendMessage(from, { text: "🏓 Pong!" });
   }
-};
+}
