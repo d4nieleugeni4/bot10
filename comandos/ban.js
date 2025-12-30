@@ -1,7 +1,8 @@
 import config from "../config.js";
 
-function limparNumero(jid = "") {
-  return jid.split("@")[0].replace(/\D/g, "");
+// Função auxiliar para extrair o ID limpo (sem identificadores de dispositivo)
+function parseJid(jid = "") {
+  return jid.split("@")[0].split(":")[0] + "@s.whatsapp.net";
 }
 
 export default {
@@ -10,29 +11,29 @@ export default {
   async executar(sock, msg) {
     const remoteJid = msg.key.remoteJid;
 
-    // ❌ só grupo
+    // ❌ Só funciona em grupos
     if (!remoteJid.endsWith("@g.us")) return;
 
     const metadata = await sock.groupMetadata(remoteJid);
     const participants = metadata.participants;
 
-    const senderJid = msg.key.participant;
-    const senderNumber = limparNumero(senderJid);
-
-    const botJid = sock.user.id;
-    const botNumber = limparNumero(botJid);
+    // ID do Bot (tratado para remover o :sessão se houver)
+    const botJid = parseJid(sock.user.id);
+    // ID de quem enviou a mensagem
+    const senderJid = parseJid(msg.key.participant || msg.key.remoteJid);
 
     // =========================
     // 👑 LISTA REAL DE ADMINS
     // =========================
     const admins = participants
       .filter(p => p.admin === "admin" || p.admin === "superadmin")
-      .map(p => limparNumero(p.id));
+      .map(p => p.id);
 
     // =========================
     // 👑 USUÁRIO É ADMIN?
     // =========================
-    if (!admins.includes(senderNumber)) {
+    const isUserAdmin = admins.includes(senderJid);
+    if (!isUserAdmin) {
       await sock.sendMessage(remoteJid, {
         text: "❌ Apenas administradores podem usar este comando.",
         quoted: msg
@@ -43,7 +44,10 @@ export default {
     // =========================
     // 🤖 BOT É ADMIN?
     // =========================
-    if (!admins.includes(botNumber)) {
+    // Corrigido: Verifica se o botJid ou qualquer variação dele está na lista
+    const isBotAdmin = participants.some(p => parseJid(p.id) === botJid && (p.admin === "admin" || p.admin === "superadmin"));
+    
+    if (!isBotAdmin) {
       await sock.sendMessage(remoteJid, {
         text: "❌ Eu preciso ser administrador para remover alguém.",
         quoted: msg
@@ -56,83 +60,56 @@ export default {
     // =========================
     let targetJid = null;
 
-    // resposta
-    const quoted =
-      msg.message?.extendedTextMessage?.contextInfo?.participant;
-
+    // Pela resposta (reply)
+    const quoted = msg.message?.extendedTextMessage?.contextInfo?.participant;
     if (quoted) {
-      targetJid = quoted.includes("@")
-        ? quoted
-        : quoted + "@s.whatsapp.net";
+      targetJid = parseJid(quoted);
     }
 
-    // menção
-    const mentioned =
-      msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
-
+    // Por menção (@user)
+    const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
     if (!targetJid && mentioned?.length) {
-      targetJid = mentioned[0];
+      targetJid = parseJid(mentioned[0]);
     }
 
     if (!targetJid) {
       await sock.sendMessage(remoteJid, {
-        text: "❌ Marque alguém ou responda uma mensagem.",
-        quoted: msg
-      });
-      return;
-    }
-
-    const targetNumber = limparNumero(targetJid);
-
-    // =========================
-    // 🚫 VALIDAÇÕES
-    // =========================
-    if (targetNumber === senderNumber) {
-      await sock.sendMessage(remoteJid, {
-        text: "❌ Você não pode se remover.",
-        quoted: msg
-      });
-      return;
-    }
-
-    if (targetNumber === botNumber) {
-      await sock.sendMessage(remoteJid, {
-        text: "❌ Você não pode me remover.",
-        quoted: msg
-      });
-      return;
-    }
-
-    if (targetNumber === limparNumero(config.dono.numero)) {
-      await sock.sendMessage(remoteJid, {
-        text: "❌ Você não pode remover o dono do bot.",
+        text: "❌ Marque alguém ou responda a uma mensagem para banir.",
         quoted: msg
       });
       return;
     }
 
     // =========================
-    // 🚫 REMOVER
+    // 🚫 VALIDAÇÕES DE SEGURANÇA
     // =========================
-    await sock.groupParticipantsUpdate(
-      remoteJid,
-      [targetJid],
-      "remove"
-    );
+    if (targetJid === senderJid) {
+      await sock.sendMessage(remoteJid, { text: "❌ Você não pode se remover.", quoted: msg });
+      return;
+    }
+
+    if (targetJid === botJid) {
+      await sock.sendMessage(remoteJid, { text: "❌ Eu não posso me remover.", quoted: msg });
+      return;
+    }
+
+    const donoJid = config.dono.numero.replace(/\D/g, "") + "@s.whatsapp.net";
+    if (targetJid === donoJid) {
+      await sock.sendMessage(remoteJid, { text: "❌ Você não pode remover o dono do bot.", quoted: msg });
+      return;
+    }
 
     // =========================
-    // ✅ CONFIRMAÇÃO
+    // 🚫 EXECUTAR REMOÇÃO
     // =========================
-    await sock.sendMessage(remoteJid, {
-      react: {
-        text: "✅",
-        key: msg.key
-      }
-    });
+    try {
+      await sock.groupParticipantsUpdate(remoteJid, [targetJid], "remove");
 
-    await sock.sendMessage(remoteJid, {
-      text: "✅ Membro removido com sucesso!",
-      quoted: msg
-    });
+      await sock.sendMessage(remoteJid, { react: { text: "✅", key: msg.key } });
+      await sock.sendMessage(remoteJid, { text: "✅ Membro removido com sucesso!", quoted: msg });
+    } catch (err) {
+      console.error(err);
+      await sock.sendMessage(remoteJid, { text: "❌ Ocorreu um erro ao tentar remover o usuário.", quoted: msg });
+    }
   }
 };
