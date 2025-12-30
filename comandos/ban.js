@@ -8,12 +8,13 @@ export default {
 
     if (!remoteJid.endsWith("@g.us")) return;
 
-    // 📋 Pegar metadados atualizados para garantir que o cache não está velho
+    // 📋 Pegar metadados atualizados
     const metadata = await sock.groupMetadata(remoteJid);
     const participants = metadata.participants;
 
-    // 🛠️ Função para limpar ABSOLUTAMENTE tudo (deixa apenas numero@s.whatsapp.net)
-    const extra LimparJid = (jid) => {
+    // 🛠️ Função corrigida (sem espaço no nome)
+    const extraLimparJid = (jid) => {
+      if (!jid) return "";
       const num = jid.split('@')[0].split(':')[0];
       return `${num}@s.whatsapp.net`;
     };
@@ -57,18 +58,17 @@ export default {
     }
 
     // =========================
-    // 🚀 EXECUTAR REMOÇÃO (Direto)
+    // 🚀 EXECUTAR REMOÇÃO
     // =========================
     try {
-      // O WhatsApp exige um array de JIDs LIMPOS
+      // Removendo as restrições de segurança do bot para testar a execução direta
       await sock.groupParticipantsUpdate(remoteJid, [targetJid], "remove");
       
       await sock.sendMessage(remoteJid, { react: { text: "✅", key: msg.key } });
     } catch (err) {
-      // Se cair aqui com erro 500, o bot DEFINITIVAMENTE não é admin no grupo
-      console.error("Erro interno do servidor WhatsApp:", err.message);
+      console.error("Erro ao banir:", err);
       await sock.sendMessage(remoteJid, { 
-        text: "❌ O WhatsApp recusou o comando. Verifique se o Bot é Administrador do grupo.", 
+        text: "❌ O WhatsApp recusou o comando. Verifique se o Bot é Administrador.", 
         quoted: msg 
       });
     }
