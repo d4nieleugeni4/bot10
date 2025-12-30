@@ -2,42 +2,56 @@ export default {
   nome: "hidetag",
 
   async executar(sock, msg) {
-    const from = msg.key.remoteJid;
+    const remoteJid = msg.key.remoteJid;
 
-    // ❌ Só funciona em grupo
-    if (!from.endsWith("@g.us")) return;
+    // ❌ Apenas grupos
+    if (!remoteJid.endsWith("@g.us")) return;
 
     const texto =
       msg.message.conversation ||
       msg.message.extendedTextMessage?.text;
 
-    const mensagem = texto.split(" ").slice(1).join(" ") || " ";
+    const fullArgs = texto.split(" ").slice(1).join(" ");
 
-    // 🔍 Metadata do grupo
-    const metadata = await sock.groupMetadata(from);
-    const participantes = metadata.participants;
+    // 📋 Metadata do grupo
+    const metadata = await sock.groupMetadata(remoteJid);
+    const participants = metadata.participants;
 
-    // 👑 Verificar se quem enviou é admin
+    // 👑 Verificar admin
     const sender = msg.key.participant;
-    const isAdmin = participantes.some(
-      p =>
+    const isAdmin = participants.some(
+      (p) =>
         p.id === sender &&
         (p.admin === "admin" || p.admin === "superadmin")
     );
 
     if (!isAdmin) {
-      await sock.sendMessage(from, {
-        text: "❌ Apenas administradores podem usar este comando."
+      await sock.sendMessage(remoteJid, {
+        text: "❌ Apenas administradores podem usar este comando.",
+        quoted: msg
       });
       return;
     }
 
-    // 👥 Marcar todos
-    const mentions = participantes.map(p => p.id);
+    // 👥 Menções (hidetag)
+    const mentions = participants.map(p => p.id);
 
-    await sock.sendMessage(from, {
-      text: mensagem,
-      mentions
+    // 😀 Reação
+    await sock.sendMessage(remoteJid, {
+      react: {
+        text: "📢",
+        key: msg.key
+      }
     });
+
+    // 📢 Mensagem principal
+    await sock.sendMessage(
+      remoteJid,
+      {
+        text: `📢 Marcando todos...\n\n${fullArgs || ""}`,
+        mentions
+      },
+      { quoted: msg }
+    );
   }
 };
