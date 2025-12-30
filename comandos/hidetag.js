@@ -1,78 +1,43 @@
-import path from "path";
-import readline from "readline";
-import P from "pino";
-import {
-  default as makeWASocket,
-  DisconnectReason,
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion
-} from "@whiskeysockets/baileys";
+export default {
+  nome: "hidetag",
 
-import handleCommands from "./handleCommands.js";
-import config from "./config.js";
+  async executar(sock, msg) {
+    const from = msg.key.remoteJid;
 
-const question = (text) => {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-  });
+    // ❌ Só funciona em grupo
+    if (!from.endsWith("@g.us")) return;
 
-  return new Promise(resolve => {
-    rl.question(text, answer => {
-      rl.close();
-      resolve(answer);
+    const texto =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text;
+
+    const mensagem = texto.split(" ").slice(1).join(" ") || " ";
+
+    // 🔍 Metadata do grupo
+    const metadata = await sock.groupMetadata(from);
+    const participantes = metadata.participants;
+
+    // 👑 Verificar se quem enviou é admin
+    const sender = msg.key.participant;
+    const isAdmin = participantes.some(
+      p =>
+        p.id === sender &&
+        (p.admin === "admin" || p.admin === "superadmin")
+    );
+
+    if (!isAdmin) {
+      await sock.sendMessage(from, {
+        text: "❌ Apenas administradores podem usar este comando."
+      });
+      return;
+    }
+
+    // 👥 Marcar todos
+    const mentions = participantes.map(p => p.id);
+
+    await sock.sendMessage(from, {
+      text: mensagem,
+      mentions
     });
-  });
-};
-
-async function connect() {
-  const { state, saveCreds } = await useMultiFileAuthState(
-    path.resolve("./auth")
-  );
-
-  const { version } = await fetchLatestBaileysVersion();
-
-  const sock = makeWASocket({
-    version,
-    auth: state,
-    logger: P({ level: "silent" }),
-    printQRInTerminal: false
-  });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  if (!sock.authState.creds.registered) {
-    let number = await question("Informe seu número (ex: 5511999999999): ");
-    number = number.replace(/\D/g, "");
-
-    const code = await sock.requestPairingCode(number);
-    console.log("📲 Código de pareamento:", code);
   }
-
-  sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
-    if (connection === "open") {
-      console.log("=".repeat(40));
-      console.log("✅ BOT CONECTADO");
-      console.log(`🤖 Bot: ${config.bot.nome}`);
-      console.log(`👑 Dono: ${config.dono.numero}`);
-      console.log(`🔤 Prefixo: ${config.prefixo || "sem prefixo"}`);
-      console.log("=".repeat(40));
-    }
-
-    if (connection === "close") {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-
-      if (shouldReconnect) connect();
-    }
-  });
-
-  sock.ev.on("messages.upsert", async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg?.message || msg.key.fromMe) return;
-
-    handleCommands(sock, msg);
-  });
-}
-
-connect();
+};
