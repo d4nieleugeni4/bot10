@@ -1,3 +1,4 @@
+import config from "./config.js";
 import path from "path";
 import readline from "readline";
 import P from "pino";
@@ -57,6 +58,16 @@ async function connect() {
   sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
     if (connection === "open") {
       console.log("✅ BOT CONECTADO COM SUCESSO!");
+      if (connection === "open") {
+         console.log("=".repeat(40));
+         console.log("✅ BOT CONECTADO COM SUCESSO");
+         console.log(`🤖 Nome: ${config.bot.nome}`);
+         console.log(`📞 Número do bot: ${config.bot.numero}`);
+         console.log(`👑 Dono: ${config.dono.numero}`);
+         console.log(`🔤 Prefixo: ${config.prefixo || "sem prefixo"}`);
+         console.log("=".repeat(40));
+}
+
     }
 
     if (connection === "close") {
