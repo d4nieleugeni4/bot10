@@ -6,75 +6,69 @@ export default {
   async executar(sock, msg) {
     const remoteJid = msg.key.remoteJid;
 
-    // ❌ Só funciona em grupos
     if (!remoteJid.endsWith("@g.us")) return;
 
-    // 📋 Obter dados do grupo
+    // 📋 Pegar metadados atualizados para garantir que o cache não está velho
     const metadata = await sock.groupMetadata(remoteJid);
     const participants = metadata.participants;
 
-    // 🛠️ Função para limpar o ID (importante para o reconhecimento funcionar)
-    const normalizeJid = (jid) => jid.split('@')[0].split(':')[0] + '@s.whatsapp.net';
+    // 🛠️ Função para limpar ABSOLUTAMENTE tudo (deixa apenas numero@s.whatsapp.net)
+    const extra LimparJid = (jid) => {
+      const num = jid.split('@')[0].split(':')[0];
+      return `${num}@s.whatsapp.net`;
+    };
 
-    const senderJid = normalizeJid(msg.key.participant || msg.key.remoteJid);
+    const senderJid = extraLimparJid(msg.key.participant || msg.key.remoteJid);
 
     // =========================
-    // 👑 VERIFICAR SE QUEM COMANDOU É ADMIN
+    // 👑 VERIFICAR SE VOCÊ É ADMIN
     // =========================
     const admins = participants
       .filter(p => p.admin === "admin" || p.admin === "superadmin")
-      .map(p => normalizeJid(p.id));
+      .map(p => extraLimparJid(p.id));
 
     if (!admins.includes(senderJid)) {
       return await sock.sendMessage(remoteJid, {
-        text: "❌ Apenas administradores podem usar este comando.",
+        text: "❌ Você precisa ser administrador para usar este comando.",
         quoted: msg
       });
     }
 
     // =========================
-    // 👤 DEFINIR ALVO (Target)
+    // 👤 DEFINIR ALVO
     // =========================
     let targetJid = null;
 
     const quotedParticipant = msg.message?.extendedTextMessage?.contextInfo?.participant;
     if (quotedParticipant) {
-      targetJid = normalizeJid(quotedParticipant);
+      targetJid = extraLimparJid(quotedParticipant);
     }
 
     const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
     if (!targetJid && mentioned?.length) {
-      targetJid = normalizeJid(mentioned[0]);
+      targetJid = extraLimparJid(mentioned[0]);
     }
 
     if (!targetJid) {
       return await sock.sendMessage(remoteJid, {
-        text: "❌ Marque alguém ou responda a uma mensagem.",
+        text: "❌ Responda ou marque alguém para banir.",
         quoted: msg
       });
     }
 
     // =========================
-    // 🚫 REGRAS DE SEGURANÇA (Dono e Próprio Bot)
-    // =========================
-    const botJid = normalizeJid(sock.user.id);
-    const donoJid = config.dono.numero.replace(/\D/g, "") + "@s.whatsapp.net";
-
-    if (targetJid === donoJid || targetJid === botJid) {
-      return await sock.sendMessage(remoteJid, { text: "❌ Não posso remover o dono ou a mim mesmo.", quoted: msg });
-    }
-
-    // =========================
-    // 🚀 EXECUTAR REMOÇÃO
+    // 🚀 EXECUTAR REMOÇÃO (Direto)
     // =========================
     try {
+      // O WhatsApp exige um array de JIDs LIMPOS
       await sock.groupParticipantsUpdate(remoteJid, [targetJid], "remove");
       
       await sock.sendMessage(remoteJid, { react: { text: "✅", key: msg.key } });
     } catch (err) {
-      console.error("Erro ao banir:", err);
+      // Se cair aqui com erro 500, o bot DEFINITIVAMENTE não é admin no grupo
+      console.error("Erro interno do servidor WhatsApp:", err.message);
       await sock.sendMessage(remoteJid, { 
-        text: "❌ Erro ao remover. Verifique se eu tenho as permissões necessárias.", 
+        text: "❌ O WhatsApp recusou o comando. Verifique se o Bot é Administrador do grupo.", 
         quoted: msg 
       });
     }
