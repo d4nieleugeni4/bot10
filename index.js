@@ -1,4 +1,3 @@
-import config from "./config.js";
 import path from "path";
 import readline from "readline";
 import P from "pino";
@@ -10,6 +9,7 @@ import {
 } from "@whiskeysockets/baileys";
 
 import handleCommands from "./handleCommands.js";
+import config from "./config.js";
 
 const question = (text) => {
   const rl = readline.createInterface({
@@ -41,15 +41,9 @@ async function connect() {
 
   sock.ev.on("creds.update", saveCreds);
 
-  // ✅ PEDIR NÚMERO + GERAR CÓDIGO (fluxo correto)
   if (!sock.authState.creds.registered) {
     let number = await question("Informe seu número (ex: 5511999999999): ");
     number = number.replace(/\D/g, "");
-
-    if (!number) {
-      console.log("❌ Número inválido");
-      process.exit(1);
-    }
 
     const code = await sock.requestPairingCode(number);
     console.log("📲 Código de pareamento:", code);
@@ -57,17 +51,12 @@ async function connect() {
 
   sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
     if (connection === "open") {
-      console.log("✅ BOT CONECTADO COM SUCESSO!");
-    if (connection === "open") {
       console.log("=".repeat(40));
-      console.log("✅ BOT CONECTADO COM SUCESSO");
-      console.log(`🤖 Nome: ${config.bot.nome}`);
-      console.log(`📞 Número do bot: ${config.bot.numero}`);
+      console.log("✅ BOT CONECTADO");
+      console.log(`🤖 Bot: ${config.bot.nome}`);
       console.log(`👑 Dono: ${config.dono.numero}`);
       console.log(`🔤 Prefixo: ${config.prefixo || "sem prefixo"}`);
       console.log("=".repeat(40));
-}
-
     }
 
     if (connection === "close") {
